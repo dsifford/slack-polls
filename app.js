@@ -50,7 +50,6 @@ app.post('/', function(req, res, next) {
         pollParams: function() { return req.body.text.substr(input.pollMethod.length).trim(); },
         channelId: req.body.channel_id
     };
-    console.log(input.channelId);
 
     // Set output options TODO: Setup /poll {setup} to save token in database
     var options = {
@@ -70,7 +69,7 @@ app.post('/', function(req, res, next) {
     } else if (input.pollMethod == 'vote') {
         // Run 'vote' handler
     } else if (input.pollMethod == 'help') {
-        help(options);
+        renderGraphic(input);
     } else if (input.pollMethod == 'results') {
         // Run 'results' handler
     }
@@ -85,22 +84,17 @@ app.post('/', function(req, res, next) {
 // --------------------- FUNCTIONS --------------------- //
 ///////////////////////////////////////////////////////////
 
-// Handler functions for /poll {new}
-
+    // Handler functions for /poll {new}
     var removePoll = function(input) {
-        db.collection("polls").deleteOne(
-            { "pollId": input.channelId },
-            function(err, results) {
-                console.log(results);
-            }
-        );
+        db.collection(input.channelId).drop(function(err, response) {
+            console.log(response);
+        });
     };
 
-    // TODO: Add 'poll graphic' array to this collection
     var newPoll = function(input) {
-        db.collection("polls").insertOne( {
-            "pollId" : input.channelId,
-            "question" : "NEW POLL INSERTED! YAYYY!!!!",
+
+        db.collection(input.channelId).insertOne( {
+            "title" : "NEW POLL INSERTED! YAYYY!!!!",
             "answers" : {
                 "A" : {
                     "choice" : "This is choice A",
@@ -121,23 +115,38 @@ app.post('/', function(req, res, next) {
             }
         }, function(err, result) {
             assert.equal(err, null);
-            console.log("Inserted a new poll into the polls collection.");
+            console.log("Created a new collection and instantiated a new poll.");
         });
     };
 
-// Handler function for /poll {vote}
+    // Handler function for /poll {vote}
     // TODO:
 
-// Handler function for /poll {help}
+    // Handler function for /poll {help}
     // TODO:
-    function help(options) {
-        options.body = 'This is a test!\nTest test test!';
-        request(options, function (error, response, body) {
-          if (error) throw new Error(error);
 
-          console.log(body);
+    // Handler function for /poll {results}
+    // TODO: Finish function that renders the graphic
+
+
+    var renderGraphic = function(input) {
+        
+        // TODO: THIS IS THE WORKING CALLBACK TO RETRIEVE 'A' SCORE
+        var test = db.collection(input.channelId).find({}, {"answers.A.score": 1, _id:0}).limit(1).toArray(function(err, data) {
+            console.log(data[0].answers.A.score);
         });
-    }
 
-// Handler function for /poll {results}
-    // TODO:
+
+        // May need special rendering for unicode characters
+        /*
+        var renderGraph = function() {
+            var graph = {
+                A : [
+                    ['├'],
+                    ['┬'.repeat()]
+                ]
+            };
+        };
+        */
+
+    };
