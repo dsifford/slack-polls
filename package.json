@@ -1,0 +1,28 @@
+{
+  "name": "slack-polls",
+  "version": "1.0.0",
+  "description": "A native polling slash command archetechture for Slack",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://dsifford@github.com/dsifford/slack-polls.git"
+  },
+  "keywords": [
+    "Slack"
+  ],
+  "author": "Derek P Sifford",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/dsifford/slack-polls/issues"
+  },
+  "homepage": "https://github.com/dsifford/slack-polls",
+  "dependencies": {
+    "body-parser": "^1.13.2",
+    "express": "^4.13.1",
+    "mongodb": "^2.0.39",
+    "request": "^2.60.0"
+  }
+}
