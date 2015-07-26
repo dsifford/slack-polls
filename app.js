@@ -1,10 +1,16 @@
-var express    = require('express');
-var bodyParser = require('body-parser');
-var request    = require("request");
-var app        = express();
+var express     = require('express'),
+    bodyParser  = require('body-parser'),
+    request     = require("request"),
+    MongoClient = require('mongodb').MongoClient,
+    assert      = require('assert'),
+    app         = express();
 
 // TESTING VARIABLES
 var PORT = 3000;
+
+// Connect to MongoDB
+
+
 
 // Include the bodyParser Middleman + allow x-url-encoding
 // to be extended to the body of the request
