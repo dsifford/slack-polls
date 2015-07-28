@@ -60,6 +60,7 @@ app.post('/', function(req, res, next) {
     input = {
         name: req.body.user_name,
         domain: req.body.team_domain,
+        userId: req.body.user_id,
         pollMethod: req.body.text.match(/\S*/)[0].toLowerCase(),
         pollParams: function() { return req.body.text.substr(input.pollMethod.length).trim(); },
         channelId: req.body.channel_id
@@ -113,10 +114,9 @@ app.post('/', function(req, res, next) {
             input.pollParams().split('"').forEach(function(param) {
                 if (param !== '' && param !== ' ' ) {
                     pollOptions.push(param);
+                    console.log(pollOptions);
                 }
             });
-
-            console.log(pollOptions);
 
             db.collection(input.channelId).insertOne( {
                 "title" : pollOptions[0],
@@ -137,7 +137,8 @@ app.post('/', function(req, res, next) {
                         "choice" : typeof pollOptions[4] === 'undefined' ? '' : pollOptions[4],
                         "score" : 0
                     }
-                }
+                },
+                "voters" : {} // Format { UserId : 'Letter'}
             }, function(err, result) {
                 assert.equal(err, null);
                 console.log("Created a new collection and instantiated a new poll.");
@@ -162,14 +163,79 @@ app.post('/', function(req, res, next) {
 
         function castVote() {
 
-            var holder = {};
-            var vote = 'answers.' + input.pollParams().toUpperCase().slice(1,2) + '.score';
-            holder[vote] = 1;
+            var holder;
+            var vote;
+// TODO Updated "voters" to an object -- need to go through this entire function and fix.
+            async.series([
+                function checkVoteStatus(callback) {
+                    db.collection(input.channelId).find({}, {"voters": 1, _id:0}).toArray(function(err, data) {
+                        assert.equal(err, null);
+                        console.log(data);
+                        var match = false;
+                        data.forEach(function(current, index) {
+                            if (current.indexOf(input.userId) > -1) {
+                                match = data[index].concat([index]);
+                                return;
+                            }
+                        });
+                        callback(null, match);
+                    });
+                }
+            ], function voteHandler(err, result) {
 
-            db.collection(input.channelId).updateOne(
-                { "answers.A.score": { $gt: -1 } },
-                { $inc: holder }
-            );
+                /**
+                 * Format of result: ['userId', 'letter', index] (index = main database array)
+                 */
+
+                if (result) {
+
+                    // Decrement value of old vote
+
+                    holder = {};
+                    vote = 'answers.' + result[1] + '.score';
+                    holder[vote] = -1;
+
+                    db.collection(input.channelId).updateOne(
+                        { "answers.A.score": { $gt: -1 } },
+                        { $inc: holder }
+                    );
+
+                    // Increment value of new vote
+
+                    holder = {};
+                    vote = 'answers.' + input.pollParams().toUpperCase().slice(1,2) + '.score';
+                    holder[vote] = 1;
+
+                    db.collection(input.channelId).updateOne(
+                        { "answers.A.score": { $gt: -1 } },
+                        { $inc: holder }
+                    );
+
+                    // Update value of voter array
+
+                    holder = {};
+                    var indexVal = result[2];
+                    vote = input.pollParams().toUpperCase().slice(1,2);
+                    holder[indexVal] = vote;
+
+                    // db.collection(input.channelId).updateOne(
+                    //     { "answers.A.score": { $gt: -1 } },
+                    //     { $set: { holder[66]  2 } }
+                    // );
+
+                } else {
+
+                    holder = {};
+                    vote = 'answers.' + input.pollParams().toUpperCase().slice(1,2) + '.score';
+                    holder[vote] = 1;
+
+                    db.collection(input.channelId).updateOne(
+                        { "answers.A.score": { $gt: -1 } },
+                        { $inc: holder }
+                    );
+                }
+
+            });
 
         }
 
@@ -203,45 +269,67 @@ app.post('/', function(req, res, next) {
                     db.collection(input.channelId).find({}, {"answers.D": 1, _id:0}).limit(1).toArray(function(err, data) {
                         callback(null, [data[0].answers.D.choice, data[0].answers.D.score]);
                     });
+                },
+                function getPollTitle(callback) {
+                    db.collection(input.channelId).find({}, {"title": 1, _id:0}).limit(1).toArray(function(err, data) {
+                        callback(null, [data[0].title]);
+                    });
                 }
             ],
             function drawGraphic(err, results){
 
-                var A = results[0].concat('A');
-                var B = results[1].concat('B');
-                var C = results[2].concat('C');
-                var D = results[3].concat('D');
+                var A     = results[0].concat('A');
+                var B     = results[1].concat('B');
+                var C     = results[2].concat('C');
+                var D     = results[3].concat('D');
+                var title = results[4];
 
-                var sorted = [A, B, C, D].sort(function(a, b) {
-                    if (a[1] < b[1]) return -1;
-                    if (a[1] > b[1]) return 1;
-                    return 0;
-                });
-                console.log(sorted);
+                graphic = [
+                    [
+                        '├' + Array(A[1]).join('┬') + '┐\n' +
+                        '│' + Array(A[1]).join('│') + '│[A]\n' +
+                        '├' + Array(A[1]).join('┴') + '┘\n'
+                    ],
+                    [
+                        '├' + Array(B[1]).join('┬') + '┐\n' +
+                        '│' + Array(B[1]).join('│') + '│[B]\n' +
+                        '├' + Array(B[1]).join('┴') + '┘\n'
+                    ],
+                    [
+                        '├' + Array(C[1]).join('┬') + '┐\n' +
+                        '│' + Array(C[1]).join('│') + '│[C]\n' +
+                        '├' + Array(C[1]).join('┴') + '┘\n'
+                    ],
+                    [
+                        '├' + Array(D[1]).join('┬') + '┐\n' +
+                        '│' + Array(D[1]).join('│') + '│[D]\n' +
+                        '├' + Array(D[1]).join('┴') + '┘\n'
+                    ]
+                ];
 
-                graphic = {
-                    A : '├' + Array(A[1] + 1).join('┬') + '┐\n' +
-                        '│' + Array(A[1] + 1).join('│') + '│[A]\n' +
-                        '├' + Array(A[1] + 1).join('┴') + '┘\n',
-                    B : '├' + Array(B[1] + 1).join('┬') + '┐\n' +
-                        '│' + Array(B[1] + 1).join('│') + '│[B]\n' +
-                        '├' + Array(B[1] + 1).join('┴') + '┘\n',
-                    C : '├' + Array(C[1] + 1).join('┬') + '┐\n' +
-                        '│' + Array(C[1] + 1).join('│') + '│[C]\n' +
-                        '├' + Array(C[1] + 1).join('┴') + '┘\n',
-                    D : '├' + Array(D[1] + 1).join('┬') + '┐\n' +
-                        '│' + Array(D[1] + 1).join('│') + '│[D]\n' +
-                        '├' + Array(D[1] + 1).join('┴') + '┘\n'
-                };
+                /**
+                 * forEach element in [A - D]...
+                 * 		If the question was not set, then remove it entirely.
+                 * 		If the total votes for the question is 0, then flatten the bar group.
+                 * @return {Array} [Formatted array ready to .join() and send to user]
+                 */
+                [A, B, C, D].forEach(
+                    function(element, index) {
+                        if (element[0] === '') {
+                            graphic.splice(index);
+                        }
+                        if (element[1] === 0 && element[0] !== '') {
+                            graphic.splice(index, 1, '│\n│[A]\n│\n');
+                        }
+                    });
 
-                // [0] Question -- [1] Number -- [2] Letter
-
-                options.body += '```\n' + graphic.A + graphic.B + graphic.C + graphic.D + '```\n' +
-                                '> *Current Results*\n\n' +
-                                '>>>*' + sorted[0][2] + '.* ' + sorted[0][0] + ' ` ' + sorted[0][1] + ' `\n' +
-                                '*' + sorted[1][2] + '.* ' + sorted[1][0] + ' ` ' + sorted[1][1] + ' `\n' +
-                                '*' + sorted[2][2] + '.* ' + sorted[2][0] + ' ` ' + sorted[2][1] + ' `\n' +
-                                '*' + sorted[3][2] + '.* ' + sorted[3][0] + ' ` ' + sorted[3][1] + ' `';
+                options.body += '_*' + title + '*_\n' +
+                                '```\n' + graphic.join('') + '```\n' +
+                                '> *Current Results*\n\n>>>' +
+                                ( A[0] !== '' ? '*' + A[2] + '.* ' + A[0] + ' ` ' + A[1] + ' `\n' : '' ) +
+                                ( B[0] !== '' ? '*' + B[2] + '.* ' + B[0] + ' ` ' + B[1] + ' `\n' : '' ) +
+                                ( C[0] !== '' ? '*' + C[2] + '.* ' + C[0] + ' ` ' + C[1] + ' `\n' : '' ) +
+                                ( D[0] !== '' ? '*' + D[2] + '.* ' + D[0] + ' ` ' + D[1] + ' `\n' : '' );
 
                 request(options, function (error, response, body) {
                   if (error) throw new Error(error);
