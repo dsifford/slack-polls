@@ -11,9 +11,8 @@ var PORT = 3000;
 
 /**
  * TODO...
- * 1) /poll {setup} function to save Slackbot Token to MongoDB
- * 2) Handler function for /poll {help}
- * 3) Move functions to external file for cleaner index
+ * 1) Handler function for /poll {help}
+ * 2) Move functions to external file for cleaner index
  */
 
 
@@ -31,7 +30,9 @@ var MONGODB_URI = 'mongodb://localhost:27017/slackpolls';
 /** GLOBALS **/
 var db,
     input,
-    options;
+    options,
+    payload,
+    requestURL;
 
 
 ////////////////////////
@@ -44,6 +45,18 @@ MongoClient.connect(MONGODB_URI, function(err, database) {
 
     db = database;
 
+    async.series([
+        function(callback) {
+            db.collection('master').find().toArray(function(err, data) {
+                assert.equal(err, null);
+                callback(null, data[0]);
+            });
+        }
+    ], function(err, results) {
+        if (results[0] !== undefined) {
+            requestURL = results[0].requestURL;
+        }
+    });
     app.listen(process.env.PORT || PORT);
     console.log('App listening on http://localhost/%s', PORT);
 });
@@ -56,6 +69,7 @@ app.post('/', function(req, res, next) {
     console.log("POST request received at '/'.");
 
     // Collect request and set variables
+
     input = {
         name: req.body.user_name,
         domain: req.body.team_domain,
@@ -68,16 +82,46 @@ app.post('/', function(req, res, next) {
     // Set output options
     options = {
         method: 'POST',
-        url: 'https://' + input.domain + '.slack.com/services/hooks/slackbot',
-        qs: { token: '80Q9s54PMHVjOXgJE1CKlzVf', channel: input.channelId },
-        body: ''
+        url: 'https://hooks.slack.com/services/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',
+        headers: { 'content-type': 'application/json' },
+        // body: payload (dont forget to add this!)
+        json: true
+    };
+
+    payload = {
+        channel: input.channelId,
+        icon_emoji: ":bar_chart:",
+        username: "Slack Polls",
+        text: "",
+        attachments:[
+            {
+                "color":"#D00000",
+                "fields":[
+                    {
+                       "title":"Choices",
+                       "value":"A\nB\nC\nD",
+                       "short":true
+                    },
+                    {
+                       "title":"Votes",
+                       "value":"64\n44\n28\n12",
+                       "short":true
+                    }
+                ]
+            }
+        ]
     };
 
     //////////////////
     // Output logic //
     //////////////////
-
-    if (input.pollMethod == 'new') {
+    if (requestURL === undefined && input.pollMethod != 'setup') {
+        console.log('You must first run "/poll setup" before you can begin polling.');
+        return;
+    }
+    if (input.pollMethod == 'setup') {
+        appSetup();
+    } else if (input.pollMethod == 'new') {
         removePoll();
         newPoll();
     } else if (input.pollMethod == 'vote') {
@@ -97,6 +141,28 @@ app.post('/', function(req, res, next) {
 ///////////////////////////////////////////////////////////
 // --------------------- FUNCTIONS --------------------- //
 ///////////////////////////////////////////////////////////
+
+    // Handler function for /poll {setup}
+    function appSetup() {
+        requestURL = input.pollParams();
+
+        async.series([
+            function dropIfExisting(callback){
+                db.collection('master').drop(function(err, response) {
+                    console.log(response);
+                    callback(null, '');
+                });
+            },
+            function storeUrl(callback){
+                db.collection('master').insertOne( {
+                    requestURL : requestURL
+                }, function(err, result) {
+                    assert.equal(err, null);
+                    console.log('Webhook URL successfully stored in the database.');
+                });
+            }
+        ]);
+    }
 
 
     // Handler functions for /poll {new}
@@ -342,7 +408,7 @@ app.post('/', function(req, res, next) {
                             graphic.splice(index);
                         }
                         if (element[1] === 0 && element[0] !== '') {
-                            graphic.splice(index, 1, '│\n│[A]\n│\n');
+                            graphic.splice(index, 1, '│\n│[' + String.fromCharCode(65 + index) + ']\n│\n');
                         }
                     });
 
