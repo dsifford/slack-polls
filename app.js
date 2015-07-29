@@ -11,10 +11,9 @@ var PORT = 3000;
 
 /**
  * TODO...
- * 1) Add check so users can only vote once (or so that they can re-vote)
- * 2) /poll {setup} function to save Slackbot Token to MongoDB
- * 3) Handler function for /poll {help}
- * 4) Move functions to external file for cleaner index
+ * 1) /poll {setup} function to save Slackbot Token to MongoDB
+ * 2) Handler function for /poll {help}
+ * 3) Move functions to external file for cleaner index
  */
 
 
@@ -138,7 +137,7 @@ app.post('/', function(req, res, next) {
                         "score" : 0
                     }
                 },
-                "voters" : {} // Format { UserId : 'Letter'}
+                "voters" : [] // Format: [ [ 'userId', 'B' ], [ 'userId', 'A' ] ... ]
             }, function(err, result) {
                 assert.equal(err, null);
                 console.log("Created a new collection and instantiated a new poll.");
@@ -165,43 +164,59 @@ app.post('/', function(req, res, next) {
 
             var holder;
             var vote;
-// TODO Updated "voters" to an object -- need to go through this entire function and fix.
+
+            /**
+             * checkVoteStatus: [Checks the voters array to see if a vote has been cast
+             * 					with a matching userId. If one exists, that array is captured
+             * 					as 'match'. If one does not exist, 'match' is set to false]
+             *
+             * voteHandler:     [Control flow depending on if the user has already voted]
+             */
             async.series([
                 function checkVoteStatus(callback) {
                     db.collection(input.channelId).find({}, {"voters": 1, _id:0}).toArray(function(err, data) {
                         assert.equal(err, null);
-                        console.log(data);
                         var match = false;
-                        data.forEach(function(current, index) {
+                        data[0].voters.forEach(function(current, index) {
                             if (current.indexOf(input.userId) > -1) {
-                                match = data[index].concat([index]);
+                                match = data[0].voters[index].concat([index]);
                                 return;
                             }
                         });
-                        callback(null, match);
+                        callback(null, [match, data[0].voters]);
                     });
                 }
             ], function voteHandler(err, result) {
 
                 /**
-                 * Format of result: ['userId', 'letter', index] (index = main database array)
+                 * Format of result: [ ['userId', 'oldChoice', index], [[full], [voters], [array-of-arrays]] ] (index = main database array)
                  */
+                var match = result[0][0];
+                var updatedArray = result[0][1]; // Copy of the old array (pre-updated)
+                var choice = input.pollParams().toUpperCase().slice(1,2); // Letter choice for new vote
 
-                if (result) {
+                if (match) {
 
-                    // Decrement value of old vote
+                    /**
+                     * If the user has already voted...
+                     * 1) Replace their old vote in updatedArray with their new one
+                     * 2) Decrement the score for their old vote
+                     * 3) Increment the score for thier new vote
+                     * 4) Replace the voters array with updatedArray
+                     */
 
+                    updatedArray[result[0][0][2]] = [input.userId, choice]; // Replace old vote with new vote
                     holder = {};
-                    vote = 'answers.' + result[1] + '.score';
+                    vote = 'answers.' + result[0][0][1] + '.score';
                     holder[vote] = -1;
 
+                    // DECREMENT
                     db.collection(input.channelId).updateOne(
                         { "answers.A.score": { $gt: -1 } },
                         { $inc: holder }
                     );
 
-                    // Increment value of new vote
-
+                    // INCREMENT
                     holder = {};
                     vote = 'answers.' + input.pollParams().toUpperCase().slice(1,2) + '.score';
                     holder[vote] = 1;
@@ -211,20 +226,23 @@ app.post('/', function(req, res, next) {
                         { $inc: holder }
                     );
 
-                    // Update value of voter array
-
-                    holder = {};
-                    var indexVal = result[2];
-                    vote = input.pollParams().toUpperCase().slice(1,2);
-                    holder[indexVal] = vote;
-
-                    // db.collection(input.channelId).updateOne(
-                    //     { "answers.A.score": { $gt: -1 } },
-                    //     { $set: { holder[66]  2 } }
-                    // );
+                    // REPLACE VOTERS ARRAY
+                    db.collection(input.channelId).updateOne(
+                        { "answers.A.score": { $gt: -1 } },
+                        { $set: { "voters" : updatedArray } }
+                    );
 
                 } else {
 
+                    /**
+                     * If the user has not voted yet (match = false)...
+                     * 1) .push() their [userId, choice] to  updatedArray
+                     * 2) Increment the score for their vote
+                     * 3) Replace the voters array with updatedArray
+                     */
+
+                    updatedArray.push([input.userId, choice]);
+
                     holder = {};
                     vote = 'answers.' + input.pollParams().toUpperCase().slice(1,2) + '.score';
                     holder[vote] = 1;
@@ -232,6 +250,11 @@ app.post('/', function(req, res, next) {
                     db.collection(input.channelId).updateOne(
                         { "answers.A.score": { $gt: -1 } },
                         { $inc: holder }
+                    );
+
+                    db.collection(input.channelId).updateOne(
+                        { "answers.A.score": { $gt: -1 } },
+                        { $set: { "voters" : updatedArray } }
                     );
                 }
 
