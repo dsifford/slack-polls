@@ -22,7 +22,6 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 /** GLOBALS **/
 // var MONGODB_URI = 'mongodb://localhost:27017/slackpolls'; // TEST VARIABLE
-// var MONGODB_URI = 'mongodb://dsifford:gators77@ds035300.mongolab.com:35300/heroku_vz85kbk2';
 // var PORT = 3000; // TEST VARIABLE
 var db,
     input,
@@ -36,22 +35,26 @@ var db,
  * Save database to 'db'
  * Save Incoming Webhook URL (if it exists) to requestURL
  */
-MongoClient.connect(process.env.MONGOLAB_URI, function(err, database) {
-    assert.equal(err, null);
-    console.log("Connected correctly to server");
 
-    db = database;
+ MongoClient.connect(process.env.MONGOLAB_URI, function(err, database) {
+     assert.equal(err, null);
+     console.log("Connected correctly to server");
+
+     db = database;
 
     async.series([
         function(callback) {
             db.collection('master').find().toArray(function(err, data) {
                 assert.equal(err, null);
-                callback(null, data[0]);
+                callback(null, data);
             });
         }
     ], function(err, results) {
-        if (results[0] !== undefined) {
-            requestURL = results[0].requestURL.substring(1, results[0].requestURL.length - 1);
+        if (results[0][0] !== undefined) {
+            requestURL = {};
+            results[0].forEach(function(counter) {
+                requestURL[counter.team] = counter.requestURL.substring(1, counter.requestURL.length - 1);
+            });
         }
     });
     app.listen(process.env.PORT || PORT);
@@ -69,6 +72,7 @@ app.post('/', function(req, res, next) {
         name: req.body.user_name,
         domain: req.body.team_domain,
         userId: req.body.user_id,
+        teamDomain: req.body.team_domain,
         pollMethod: req.body.text.match(/\S*/)[0].toLowerCase(),
         pollParams: function() { return req.body.text.substr(input.pollMethod.length).trim(); },
         channelId: req.body.channel_id,
@@ -78,10 +82,16 @@ app.post('/', function(req, res, next) {
     // SET OUTPUT OPTIONS
     options = {
         method: 'POST',
-        url: requestURL,
+        url: undefined,
         headers: { 'content-type': 'application/json' },
         json: true
     };
+
+    for(var key in requestURL) {
+        if(key == input.teamDomain) {
+            options.url = requestURL[key];
+        }
+    }
 
     // INSTANTIATE OUTPUT PAYLOAD
     payload = {
@@ -114,7 +124,10 @@ app.post('/', function(req, res, next) {
 
     // OUTPUT LOGIC
     if (requestURL === undefined && input.pollMethod != 'setup') {
-        console.log('You must first run "/poll setup" before you can begin polling.');
+        if (input.pollMethod == 'help') {
+            res.send(getHelp);
+        }
+        res.send('You must first run "/poll setup" before you can begin polling.');
         return;
     }
     if (input.pollMethod == 'setup') {
@@ -146,21 +159,16 @@ app.post('/', function(req, res, next) {
         function appSetup() {
             requestURL = input.pollParams();
 
-            async.series([
-                function dropIfExisting(callback){
-                    db.collection('master').drop(function(err, response) {
-                        console.log(response);
-                        callback(null, '');
-                    });
+            db.collection('master').findOneAndReplace({team: input.teamDomain},
+                {team: input.teamDomain, requestURL: requestURL},
+                {
+                        returnOriginal: false,
+                        upsert: true,
                 },
-                function storeUrl(callback){
-                    db.collection('master').insertOne( {
-                        requestURL : requestURL
-                    }, function(err, result) {
-                        assert.equal(err, null);
-                    });
-                }
-            ]);
+                function(err, response) {
+                assert.equal(err, null);
+                console.log('Document successfully inserted into database.');
+            });
         }
 
 
@@ -336,26 +344,32 @@ app.post('/', function(req, res, next) {
 
     // /poll {help} Variable
 
-        var getHelp = '*FORMAT:* `/poll` `{method}` `[arguments]`\n' +
-                      '`Method`: DO NOT surround in quotes\n' +
-                      '`Arguments`: All arguments must be separated by a *single space* and surrounded in *"double quotes"*\n\n' +
-                      '*LIST OF AVAILABLE METHODS:*\n' +
+        var getHelp = '*FORMAT: `/poll` `{method}` `[arguments]*`\n' +
+                      '*`Method`*: DO NOT surround in quotes\n' +
+                      '*`Arguments`*: All arguments must be separated by a *single space* and surrounded in *"double quotes"*\n\n\n' +
+                      '*LIST OF AVAILABLE METHODS:*\n\n' +
+                      '*/poll `setup` `[Incoming Webhook URL]`*\n' +
                       '```\n' +
-                      '/poll setup [Incoming Webhook URL]\n' +
                       '--- [Incoming Webhook URL]: Found on the integration configuration page.\n' +
-                      '+++ EXAMPLE: /poll setup "https://hooks.slack.com/services/xxxxxxxxx/yyyyyyyyy/zzzzzzzzzzzzzzzzzzzzzzzz"\n\n' +
-                      '/poll new [Title] [Option (up to 4)] \n' +
+                      '+++ EXAMPLE: /poll setup "https://hooks.slack.com/services/xxxxxxxxx/yyyyyyyyy/zzzzzzzzzzzzzzzzzzzzzzzz"\n' +
+                      '```\n' +
+                      '*/poll `new` `[Title]` `[Option (up to 4)]`*\n' +
+                      '```\n' +
                       '@@@ This will delete any existing poll in the current channel and initiate a new one.\n' +
                       '@@@ You may have as many simultaneous polls running as channels in your team.\n' +
                       '--- [Title]: The title of your poll.\n' +
                       '--- [Option]: Up to 4 options for your poll.\n' +
-                      '+++ EXAMPLE: /poll new "This is the title of my question." "Option A" "Option B" "Option C" "Option D"\n\n' +
-                      '/poll vote [Option]\n' +
+                      '+++ EXAMPLE: /poll new "This is the title of my question." "Option A" "Option B" "Option C" "Option D"\n' +
+                      '```\n' +
+                      '*/poll `vote` `[Option]`*\n' +
+                      '```\n' +
                       '@@@ This method saves your vote in the database.\n' +
                       '@@@ Subsequent uses of vote on the same poll replaces your previous vote with your current one.\n' +
                       '--- [Option]: A single letter corresponding to the option of your choice. Case-insensitive.\n' +
-                      '+++ EXAMPLE: /poll vote "C"  -OR-  /poll vote "c"\n\n' +
-                      '/poll results\n' +
+                      '+++ EXAMPLE: /poll vote "C"  -OR-  /poll vote "c"\n' +
+                      '```\n' +
+                      '*/poll `results`*\n' +
+                      '```\n' +
                       '@@@ This method takes no arguments. Invoking it will return a graph and detailed breakdown of the current results.\n' +
                       '```';
 
