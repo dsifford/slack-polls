@@ -11,8 +11,14 @@ var PORT = 3000;
 
 /**
  * TODO...
- * 1) Handler function for /poll {help}
- * 2) Move functions to external file for cleaner index
+ * 1) Fully integrate Slack Webhook API
+ * 		- /poll {new} [DONE]
+ * 		- /poll {vote} [DONE]
+ * 		- /poll {results} [DONE]
+ * 		- /poll {setup} [DONE]
+ * 		- /poll {help}
+ * 3) Handler function for /poll {help}
+ * 4) Move functions to external file for cleaner index
  */
 
 
@@ -76,12 +82,13 @@ app.post('/', function(req, res, next) {
         userId: req.body.user_id,
         pollMethod: req.body.text.match(/\S*/)[0].toLowerCase(),
         pollParams: function() { return req.body.text.substr(input.pollMethod.length).trim(); },
-        channelId: req.body.channel_id
+        channelId: req.body.channel_id,
+        channelName: '#' + req.body.channel_name
     };
 
     // Set output options
     options = {
-        method: 'POST',
+        method: 'POST', // TODO: Update URL field with variable
         url: 'https://hooks.slack.com/services/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',
         headers: { 'content-type': 'application/json' },
         // body: payload (dont forget to add this!)
@@ -89,23 +96,27 @@ app.post('/', function(req, res, next) {
     };
 
     payload = {
-        channel: input.channelId,
-        icon_emoji: ":bar_chart:",
-        username: "Slack Polls",
-        text: "",
-        attachments:[
+        "channel": input.channelName,
+        "icon_emoji": ":bar_chart:",
+        "username": "Slack Polls",
+        "text": undefined, // Update
+        "attachments":[
             {
+                "title": undefined,
+                "text": undefined,
+                "image_url": undefined,
                 "color":"#D00000",
+                "mrkdwn_in": ["pretext", "text", "fields"],
                 "fields":[
                     {
-                       "title":"Choices",
-                       "value":"A\nB\nC\nD",
-                       "short":true
+                       "title": "Choices",
+                       "value": undefined, // Update [value: A. Question A\n...]
+                       "short": true
                     },
                     {
-                       "title":"Votes",
-                       "value":"64\n44\n28\n12",
-                       "short":true
+                       "title": "Votes",
+                       "value": undefined, // Update [value: votecountA\n...]
+                       "short": true
                     }
                 ]
             }
@@ -121,11 +132,14 @@ app.post('/', function(req, res, next) {
     }
     if (input.pollMethod == 'setup') {
         appSetup();
+        res.send('Webhook URL successfully stored in the database. You\'re all set!');
     } else if (input.pollMethod == 'new') {
         removePoll();
         newPoll();
     } else if (input.pollMethod == 'vote') {
         castVote();
+        res.send('Thanks for casting your vote, ' + input.name + '!\n' +
+                  'You may check back on the results at any time by invoking `/poll results`.');
     } else if (input.pollMethod == 'help') {
         // Run 'help' handler
     } else if (input.pollMethod == 'results') {
@@ -158,7 +172,6 @@ app.post('/', function(req, res, next) {
                     requestURL : requestURL
                 }, function(err, result) {
                     assert.equal(err, null);
-                    console.log('Webhook URL successfully stored in the database.');
                 });
             }
         ]);
@@ -184,35 +197,40 @@ app.post('/', function(req, res, next) {
             });
 
             db.collection(input.channelId).insertOne( {
-                "title" : pollOptions[0],
-                "answers" : {
-                    "A" : {
+                title : pollOptions[0],
+                answers : {
+                    A : {
                         "choice" : pollOptions[1],
                         "score" : 0
                     },
-                    "B" : {
+                    B : {
                         "choice" : typeof pollOptions[2] === 'undefined' ? '' : pollOptions[2],
                         "score" : 0
                     },
-                    "C" : {
+                    C : {
                         "choice" : typeof pollOptions[3] === 'undefined' ? '' : pollOptions[3],
                         "score" : 0
                     },
-                    "D" : {
+                    D : {
                         "choice" : typeof pollOptions[4] === 'undefined' ? '' : pollOptions[4],
                         "score" : 0
                     }
                 },
-                "voters" : [] // Format: [ [ 'userId', 'B' ], [ 'userId', 'A' ] ... ]
+                voters : [] // Format: [ [ 'userId', 'B' ], [ 'userId', 'A' ] ... ]
             }, function(err, result) {
                 assert.equal(err, null);
                 console.log("Created a new collection and instantiated a new poll.");
 
-                options.body += 'New poll created successfully!\n\n*' +
-                                pollOptions[0] + '*\n>>>*A.* ' + pollOptions[1] + '\n' +
+                // SET RESPONSE PAYLOAD
+                payload.text += '*New poll created successfully!*';
+                payload.attachments[0].title = pollOptions[0];
+                payload.attachments[0].text = '*A.* ' + pollOptions[1] + '\n' +
                                 (typeof pollOptions[2] === 'undefined' ? '' : ('*B.* ' + pollOptions[2] + '\n')) +
                                 (typeof pollOptions[3] === 'undefined' ? '' : ('*C.* ' + pollOptions[3] + '\n')) +
                                 (typeof pollOptions[4] === 'undefined' ? '' : ('*D.* ' + pollOptions[4]));
+                payload.attachments[0].fields = undefined;
+
+                options.body = payload;
 
                 request(options, function (error, response, body) {
                   if (error) throw new Error(error);
@@ -412,13 +430,20 @@ app.post('/', function(req, res, next) {
                         }
                     });
 
-                options.body += '_*' + title + '*_\n' +
-                                '```\n' + graphic.join('') + '```\n' +
-                                '> *Current Results*\n\n>>>' +
-                                ( A[0] !== '' ? '*' + A[2] + '.* ' + A[0] + ' ` ' + A[1] + ' `\n' : '' ) +
-                                ( B[0] !== '' ? '*' + B[2] + '.* ' + B[0] + ' ` ' + B[1] + ' `\n' : '' ) +
-                                ( C[0] !== '' ? '*' + C[2] + '.* ' + C[0] + ' ` ' + C[1] + ' `\n' : '' ) +
-                                ( D[0] !== '' ? '*' + D[2] + '.* ' + D[0] + ' ` ' + D[1] + ' `\n' : '' );
+                // SET RESPONSE PAYLOAD
+                payload.text = '*Current Results*\n```\n' + graphic.join('') + '```\n';
+                payload.attachments[0].pretext = '_*' + title + '*_\n';
+                payload.attachments[0].fields[0].value =    ( A[0] !== '' ? '*' + A[2] + '.* ' + A[0] + '\n' : '' ) +
+                                                            ( B[0] !== '' ? '*' + B[2] + '.* ' + B[0] + '\n' : '' ) +
+                                                            ( C[0] !== '' ? '*' + C[2] + '.* ' + C[0] + '\n' : '' ) +
+                                                            ( D[0] !== '' ? '*' + D[2] + '.* ' + D[0] + '\n' : '' );
+                payload.attachments[0].fields[1].value =    ( A[0] !== '' ? ' ` ' + A[1] + ' `\n' : '' ) +
+                                                            ( B[0] !== '' ? ' ` ' + B[1] + ' `\n' : '' ) +
+                                                            ( C[0] !== '' ? ' ` ' + C[1] + ' `\n' : '' ) +
+                                                            ( D[0] !== '' ? ' ` ' + D[1] + ' `\n' : '' );
+
+                options.body = payload;
+
 
                 request(options, function (error, response, body) {
                   if (error) throw new Error(error);
