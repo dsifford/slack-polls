@@ -90,9 +90,12 @@ app.post('/', function(req, res, next) {
         for(var key in requestURL) {
             if(key == input.teamDomain) {
                 options.url = requestURL[key];
+                break;
             }
         }
     }
+
+    console.log(options.url);
 
     // INSTANTIATE OUTPUT PAYLOAD
     payload = {
