@@ -22,8 +22,8 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 /** GLOBALS **/
 // var MONGODB_URI = 'mongodb://localhost:27017/slackpolls'; // TEST VARIABLE
-var MONGODB_URI = 'mongodb://dsifford:gators77@ds035300.mongolab.com:35300/heroku_vz85kbk2';
-var PORT = 3000; // TEST VARIABLE
+// var MONGODB_URI = 'mongodb://dsifford:gators77@ds035300.mongolab.com:35300/heroku_vz85kbk2';
+// var PORT = 3000; // TEST VARIABLE
 var db,
     input,
     options,
@@ -55,7 +55,7 @@ MongoClient.connect(MONGODB_URI, function(err, database) {
         }
     });
     app.listen(process.env.PORT || PORT);
-    console.log('App listening on http://localhost/%s', PORT);
+    console.log('App listening on http://localhost/%s', process.env.PORT);
 });
 
 ///////////////////////////////
