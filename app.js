@@ -29,19 +29,7 @@ var db,
     payload,
     requestURL;
 
-
-/**
- * Connect to MongoDB
- * Save database to 'db'
- * Save Incoming Webhook URL (if it exists) to requestURL
- */
-
- MongoClient.connect(process.env.MONGOLAB_URI, function(err, database) {
-     assert.equal(err, null);
-     console.log("Connected correctly to server");
-
-     db = database;
-
+var resetRequest = function() {
     async.series([
         function(callback) {
             db.collection('master').find().toArray(function(err, data) {
@@ -57,6 +45,37 @@ var db,
             });
         }
     });
+};
+
+
+/**
+ * Connect to MongoDB
+ * Save database to 'db'
+ * Save Incoming Webhook URL (if it exists) to requestURL
+ */
+
+ MongoClient.connect(process.env.MONGOLAB_URI, function(err, database) {
+     assert.equal(err, null);
+     console.log("Connected correctly to server");
+
+     db = database;
+
+     resetRequest();
+    // async.series([
+    //     function(callback) {
+    //         db.collection('master').find().toArray(function(err, data) {
+    //             assert.equal(err, null);
+    //             callback(null, data);
+    //         });
+    //     }
+    // ], function(err, results) {
+    //     if (results[0][0] !== undefined) {
+    //         requestURL = {};
+    //         results[0].forEach(function(counter) {
+    //             requestURL[counter.team] = counter.requestURL;
+    //         });
+    //     }
+    // });
     app.listen(process.env.PORT || PORT);
     console.log('App listening on http://localhost/%s', process.env.PORT);
 });
@@ -95,8 +114,6 @@ app.post('/', function(req, res, next) {
             }
         }
     }
-
-    console.log(options.url);
 
     // INSTANTIATE OUTPUT PAYLOAD
     payload = {
@@ -137,6 +154,7 @@ app.post('/', function(req, res, next) {
     }
     if (input.pollMethod == 'setup') {
         appSetup();
+        resetRequest();
         res.send('Webhook URL successfully stored in the database. You\'re all set!');
     } else if (input.pollMethod == 'new') {
         newHandler();
