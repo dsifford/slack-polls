@@ -6,34 +6,23 @@ var express     = require('express'),
     async       = require('async'),
     app         = express();
 
-// TESTING VARIABLES
-var PORT = 3000;
-
 /**
  * TODO...
- * 1) Fully integrate Slack Webhook API
- * 		- /poll {new} [DONE]
- * 		- /poll {vote} [DONE]
- * 		- /poll {results} [DONE]
- * 		- /poll {setup} [DONE]
- * 		- /poll {help}
- * 3) Handler function for /poll {help}
- * 4) Move functions to external file for cleaner index
+ * Move functions to external file for cleaner index
  */
 
 
-// Include the bodyParser Middleman + allow x-url-encoding
-// to be extended to the body of the request
+/**
+ * Include the bodyParser Middleman + allow x-url-encoding
+ * to be extended to the body of the request
+ */
 app.use(bodyParser.urlencoded({ extended: true }));
 
 
-/**
- * Global MongoDB URI
- * @type {String}
- */
-var MONGODB_URI = 'mongodb://localhost:27017/slackpolls';
 
 /** GLOBALS **/
+var MONGODB_URI = 'mongodb://localhost:27017/slackpolls'; // TEST VARIABLE
+var PORT = 3000; // TEST VARIABLE
 var db,
     input,
     options,
@@ -41,10 +30,11 @@ var db,
     requestURL;
 
 
-////////////////////////
-// Connect to MongoDB //
-////////////////////////
-
+/**
+ * Connect to MongoDB
+ * Save database to 'db'
+ * Save Incoming Webhook URL (if it exists) to requestURL
+ */
 MongoClient.connect(MONGODB_URI, function(err, database) {
     assert.equal(err, null);
     console.log("Connected correctly to server");
@@ -60,7 +50,7 @@ MongoClient.connect(MONGODB_URI, function(err, database) {
         }
     ], function(err, results) {
         if (results[0] !== undefined) {
-            requestURL = results[0].requestURL;
+            requestURL = results[0].requestURL.substring(1, results[0].requestURL.length - 1);
         }
     });
     app.listen(process.env.PORT || PORT);
@@ -73,9 +63,7 @@ MongoClient.connect(MONGODB_URI, function(err, database) {
 
 app.post('/', function(req, res, next) {
     console.log("POST request received at '/'.");
-
-    // Collect request and set variables
-
+    // PARSE REQUEST TO INDIVIDUAL VARIABLES
     input = {
         name: req.body.user_name,
         domain: req.body.team_domain,
@@ -86,20 +74,20 @@ app.post('/', function(req, res, next) {
         channelName: '#' + req.body.channel_name
     };
 
-    // Set output options
+    // SET OUTPUT OPTIONS
     options = {
-        method: 'POST', // TODO: Update URL field with variable
-        url: 'https://hooks.slack.com/services/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',
+        method: 'POST',
+        url: requestURL,
         headers: { 'content-type': 'application/json' },
-        // body: payload (dont forget to add this!)
         json: true
     };
 
+    // INSTANTIATE OUTPUT PAYLOAD
     payload = {
         "channel": input.channelName,
         "icon_emoji": ":bar_chart:",
         "username": "Slack Polls",
-        "text": undefined, // Update
+        "text": undefined,
         "attachments":[
             {
                 "title": undefined,
@@ -110,12 +98,12 @@ app.post('/', function(req, res, next) {
                 "fields":[
                     {
                        "title": "Choices",
-                       "value": undefined, // Update [value: A. Question A\n...]
+                       "value": undefined,
                        "short": true
                     },
                     {
                        "title": "Votes",
-                       "value": undefined, // Update [value: votecountA\n...]
+                       "value": undefined,
                        "short": true
                     }
                 ]
@@ -123,9 +111,7 @@ app.post('/', function(req, res, next) {
         ]
     };
 
-    //////////////////
-    // Output logic //
-    //////////////////
+    // OUTPUT LOGIC
     if (requestURL === undefined && input.pollMethod != 'setup') {
         console.log('You must first run "/poll setup" before you can begin polling.');
         return;
@@ -134,16 +120,14 @@ app.post('/', function(req, res, next) {
         appSetup();
         res.send('Webhook URL successfully stored in the database. You\'re all set!');
     } else if (input.pollMethod == 'new') {
-        removePoll();
-        newPoll();
+        newHandler();
     } else if (input.pollMethod == 'vote') {
         castVote();
         res.send('Thanks for casting your vote, ' + input.name + '!\n' +
                   'You may check back on the results at any time by invoking `/poll results`.');
     } else if (input.pollMethod == 'help') {
-        // Run 'help' handler
+        res.send(getHelp);
     } else if (input.pollMethod == 'results') {
-        // Run 'results' handler
         getScores();
     }
 
@@ -157,88 +141,91 @@ app.post('/', function(req, res, next) {
 ///////////////////////////////////////////////////////////
 
     // Handler function for /poll {setup}
-    function appSetup() {
-        requestURL = input.pollParams();
 
-        async.series([
-            function dropIfExisting(callback){
-                db.collection('master').drop(function(err, response) {
-                    console.log(response);
-                    callback(null, '');
-                });
-            },
-            function storeUrl(callback){
-                db.collection('master').insertOne( {
-                    requestURL : requestURL
-                }, function(err, result) {
-                    assert.equal(err, null);
-                });
-            }
-        ]);
-    }
+        function appSetup() {
+            requestURL = input.pollParams();
 
-
-    // Handler functions for /poll {new}
-    // TODO: Merge 'removePoll' and newPoll into a single async function
-        var removePoll = function() {
-            db.collection(input.channelId).drop(function(err, response) {
-                console.log(response);
-            });
-        };
-
-        var newPoll = function() {
-
-            var pollOptions = [];
-            input.pollParams().split('"').forEach(function(param) {
-                if (param !== '' && param !== ' ' ) {
-                    pollOptions.push(param);
-                    console.log(pollOptions);
-                }
-            });
-
-            db.collection(input.channelId).insertOne( {
-                title : pollOptions[0],
-                answers : {
-                    A : {
-                        "choice" : pollOptions[1],
-                        "score" : 0
-                    },
-                    B : {
-                        "choice" : typeof pollOptions[2] === 'undefined' ? '' : pollOptions[2],
-                        "score" : 0
-                    },
-                    C : {
-                        "choice" : typeof pollOptions[3] === 'undefined' ? '' : pollOptions[3],
-                        "score" : 0
-                    },
-                    D : {
-                        "choice" : typeof pollOptions[4] === 'undefined' ? '' : pollOptions[4],
-                        "score" : 0
-                    }
+            async.series([
+                function dropIfExisting(callback){
+                    db.collection('master').drop(function(err, response) {
+                        console.log(response);
+                        callback(null, '');
+                    });
                 },
-                voters : [] // Format: [ [ 'userId', 'B' ], [ 'userId', 'A' ] ... ]
-            }, function(err, result) {
-                assert.equal(err, null);
-                console.log("Created a new collection and instantiated a new poll.");
+                function storeUrl(callback){
+                    db.collection('master').insertOne( {
+                        requestURL : requestURL
+                    }, function(err, result) {
+                        assert.equal(err, null);
+                    });
+                }
+            ]);
+        }
 
-                // SET RESPONSE PAYLOAD
-                payload.text += '*New poll created successfully!*';
-                payload.attachments[0].title = pollOptions[0];
-                payload.attachments[0].text = '*A.* ' + pollOptions[1] + '\n' +
-                                (typeof pollOptions[2] === 'undefined' ? '' : ('*B.* ' + pollOptions[2] + '\n')) +
-                                (typeof pollOptions[3] === 'undefined' ? '' : ('*C.* ' + pollOptions[3] + '\n')) +
-                                (typeof pollOptions[4] === 'undefined' ? '' : ('*D.* ' + pollOptions[4]));
-                payload.attachments[0].fields = undefined;
 
-                options.body = payload;
+    // Handler function for /poll {new}
 
-                request(options, function (error, response, body) {
-                  if (error) throw new Error(error);
-                  console.log(body);
-                });
-            });
-        };
+        function newHandler() {
+            async.series([
+                function removePoll(callback) {
+                    db.collection(input.channelId).drop(function(err, response) {
+                        callback(null);
+                    });
+                },
+                function newPoll(callback) {
 
+                    var pollOptions = [];
+                    input.pollParams().split('"').forEach(function(param) {
+                        if (param !== '' && param !== ' ' ) {
+                            pollOptions.push(param);
+                            console.log(pollOptions);
+                        }
+                    });
+
+                    db.collection(input.channelId).insertOne( {
+                        title : pollOptions[0],
+                        answers : {
+                            A : {
+                                "choice" : pollOptions[1],
+                                "score" : 0
+                            },
+                            B : {
+                                "choice" : typeof pollOptions[2] === 'undefined' ? '' : pollOptions[2],
+                                "score" : 0
+                            },
+                            C : {
+                                "choice" : typeof pollOptions[3] === 'undefined' ? '' : pollOptions[3],
+                                "score" : 0
+                            },
+                            D : {
+                                "choice" : typeof pollOptions[4] === 'undefined' ? '' : pollOptions[4],
+                                "score" : 0
+                            }
+                        },
+                        voters : [] // Format: [ [ 'userId', 'B' ], [ 'userId', 'A' ] ... ]
+                    }, function(err, result) {
+                        assert.equal(err, null);
+                        console.log("Created a new collection and instantiated a new poll.");
+
+                        // SET RESPONSE PAYLOAD
+                        payload.text = '*New poll created successfully!*';
+                        payload.attachments[0].title = pollOptions[0];
+                        payload.attachments[0].text = '*A.* ' + pollOptions[1] + '\n' +
+                                        (typeof pollOptions[2] === 'undefined' ? '' : ('*B.* ' + pollOptions[2] + '\n')) +
+                                        (typeof pollOptions[3] === 'undefined' ? '' : ('*C.* ' + pollOptions[3] + '\n')) +
+                                        (typeof pollOptions[4] === 'undefined' ? '' : ('*D.* ' + pollOptions[4]));
+                        payload.attachments[0].fields = undefined;
+
+                        options.body = payload;
+
+                        request(options, function (error, response, body) {
+                          if (error) throw new Error(error);
+                          console.log(body);
+                        });
+                    });
+                }
+            ]);
+        }
 
 
 
@@ -346,8 +333,30 @@ app.post('/', function(req, res, next) {
 
         }
 
-    // Handler function for /poll {help}
-    // TODO:
+    // /poll {help} Variable
+
+        var getHelp = '*FORMAT:* `/poll` `{method}` `[arguments]`\n' +
+                      '`Method`: DO NOT surround in quotes\n' +
+                      '`Arguments`: All arguments must be separated by a *single space* and surrounded in *"double quotes"*\n\n' +
+                      '*LIST OF AVAILABLE METHODS:*\n' +
+                      '```\n' +
+                      '/poll setup [Incoming Webhook URL]\n' +
+                      '--- [Incoming Webhook URL]: Found on the integration configuration page.\n' +
+                      '+++ EXAMPLE: /poll setup "https://hooks.slack.com/services/xxxxxxxxx/yyyyyyyyy/zzzzzzzzzzzzzzzzzzzzzzzz"\n\n' +
+                      '/poll new [Title] [Option (up to 4)] \n' +
+                      '@@@ This will delete any existing poll in the current channel and initiate a new one.\n' +
+                      '@@@ You may have as many simultaneous polls running as channels in your team.\n' +
+                      '--- [Title]: The title of your poll.\n' +
+                      '--- [Option]: Up to 4 options for your poll.\n' +
+                      '+++ EXAMPLE: /poll new "This is the title of my question." "Option A" "Option B" "Option C" "Option D"\n\n' +
+                      '/poll vote [Option]\n' +
+                      '@@@ This method saves your vote in the database.\n' +
+                      '@@@ Subsequent uses of vote on the same poll replaces your previous vote with your current one.\n' +
+                      '--- [Option]: A single letter corresponding to the option of your choice. Case-insensitive.\n' +
+                      '+++ EXAMPLE: /poll vote "C"  -OR-  /poll vote "c"\n\n' +
+                      '/poll results\n' +
+                      '@@@ This method takes no arguments. Invoking it will return a graph and detailed breakdown of the current results.\n' +
+                      '```';
 
     // Handler function for /poll {results}
 
