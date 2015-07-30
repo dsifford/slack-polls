@@ -81,7 +81,7 @@ app.post('/', function(req, res, next) {
     // SET OUTPUT OPTIONS
     options = {
         method: 'POST',
-        url: undefined,
+        uri: undefined,
         headers: { 'content-type': 'application/json' },
         json: true
     };
@@ -89,7 +89,8 @@ app.post('/', function(req, res, next) {
     if (requestURL !== undefined) {
         for(var key in requestURL) {
             if(key == input.teamDomain) {
-                options.url = requestURL[key].substring(1, requestURL[key].length-1);
+                options.uri = requestURL[key].substring(1, requestURL[key].length-1);
+                console.log('This is the url generated in the for loop: ' + requestURL[key].substring(1, requestURL[key].length-1));
                 break;
             }
         }
