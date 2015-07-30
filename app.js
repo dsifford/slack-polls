@@ -130,22 +130,22 @@ app.post('/', function(req, res, next) {
     // OUTPUT LOGIC
     if (requestURL === undefined && input.pollMethod != 'setup') {
         if (input.pollMethod == 'help') {
-            res.send(getHelp);
+            res.write(getHelp);
         }
-        res.send('You must first run "/poll setup" before you can begin polling.');
+        res.write('You must first run "/poll setup" before you can begin polling.');
         return;
     }
     if (input.pollMethod == 'setup') {
         appSetup();
-        res.send('Webhook URL successfully stored in the database. You\'re all set!');
+        res.write('Webhook URL successfully stored in the database. You\'re all set!');
     } else if (input.pollMethod == 'new') {
         newHandler();
     } else if (input.pollMethod == 'vote') {
         castVote();
-        res.send('Thanks for casting your vote, ' + input.name + '!\n' +
+        res.write('Thanks for casting your vote, ' + input.name + '!\n' +
                   'You may check back on the results at any time by invoking `/poll results`.');
     } else if (input.pollMethod == 'help') {
-        res.send(getHelp);
+        res.write(getHelp);
     } else if (input.pollMethod == 'results') {
         getScores();
     }
