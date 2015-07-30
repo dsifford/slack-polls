@@ -89,7 +89,7 @@ app.post('/', function(req, res, next) {
     if (requestURL !== undefined) {
         for(var key in requestURL) {
             if(key == input.teamDomain) {
-                options.url = requestURL[key];
+                options.url = requestURL[key].substring(1, requestURL[key].length-1);
                 break;
             }
         }
