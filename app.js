@@ -36,7 +36,7 @@ var db,
  * Save database to 'db'
  * Save Incoming Webhook URL (if it exists) to requestURL
  */
-MongoClient.connect(MONGOLAB_URI, function(err, database) {
+MongoClient.connect(process.env.MONGOLAB_URI, function(err, database) {
     assert.equal(err, null);
     console.log("Connected correctly to server");
 
