@@ -53,7 +53,7 @@ var db,
         if (results[0][0] !== undefined) {
             requestURL = {};
             results[0].forEach(function(counter) {
-                requestURL[counter.team] = counter.requestURL.substring(1, counter.requestURL.length - 1);
+                requestURL[counter.team] = counter.requestURL;
             });
         }
     });
