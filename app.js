@@ -7,12 +7,6 @@ var express     = require('express'),
     app         = express();
 
 /**
- * TODO...
- * Move functions to external file for cleaner index
- */
-
-
-/**
  * Include the bodyParser Middleman + allow x-url-encoding
  * to be extended to the body of the request
  */
@@ -28,6 +22,10 @@ var db,
     options,
     payload,
     requestURL;
+
+/**
+ * Function to fetch the list of Incoming Webhook URIs.
+ */
 
 var resetRequest = function() {
     async.series([
@@ -55,27 +53,13 @@ var resetRequest = function() {
  */
 
  MongoClient.connect(process.env.MONGOLAB_URI, function(err, database) {
-     assert.equal(err, null);
-     console.log("Connected correctly to server");
+    assert.equal(err, null);
+    console.log("Connected correctly to server");
 
-     db = database;
+    db = database;
 
-     resetRequest();
-    // async.series([
-    //     function(callback) {
-    //         db.collection('master').find().toArray(function(err, data) {
-    //             assert.equal(err, null);
-    //             callback(null, data);
-    //         });
-    //     }
-    // ], function(err, results) {
-    //     if (results[0][0] !== undefined) {
-    //         requestURL = {};
-    //         results[0].forEach(function(counter) {
-    //             requestURL[counter.team] = counter.requestURL;
-    //         });
-    //     }
-    // });
+    resetRequest();
+
     app.listen(process.env.PORT || PORT);
     console.log('App listening on http://localhost/%s', process.env.PORT);
 });
