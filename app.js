@@ -191,7 +191,7 @@ app.post('/', function(req, res, next) {
                 function newPoll(callback) {
 
                     var pollOptions = [];
-                    input.pollParams().split('"').forEach(function(param) {
+                    input.pollParams().split(/(?:["“])(.*?)(?:[”"])/g).forEach(function(param) {
                         if (param !== '' && param !== ' ' ) {
                             pollOptions.push(param);
                             console.log(pollOptions);
