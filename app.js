@@ -15,7 +15,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 
 /** GLOBALS **/
-// var MONGODB_URI = 'mongodb://localhost:27017/slackpolls'; // TEST VARIABLE
+// var MONGOLAB_URI = 'mongodb://localhost:27017/slackpolls'; // TEST VARIABLE
 // var PORT = 3000; // TEST VARIABLE
 var db,
     input,
@@ -148,11 +148,11 @@ app.post('/', function(req, res, next) {
                   'You may check back on the results at any time by invoking `/poll results`.');
     } else if (input.pollMethod == 'help') {
         res.send(getHelp);
+    } else if (input.pollMethod == 'peek') {
+        getScores(res, true);
     } else if (input.pollMethod == 'results') {
-        getScores();
+        getScores(res, false);
     }
-
-    // res.end();
 
 });
 
@@ -382,7 +382,7 @@ app.post('/', function(req, res, next) {
 
     // Handler function for /poll {results}
 
-        function getScores() {
+        function getScores(mainResponse, isPeek) {
 
             var scores;
             var graphic;
@@ -475,12 +475,14 @@ app.post('/', function(req, res, next) {
 
                 options.body = payload;
 
-
-                request(options, function (error, response, body) {
-                  if (error) throw new Error(error);
-                  console.log(body);
-                });
-
+                if (isPeek) {
+                    mainResponse.send(payload.text + payload.attachments[0].pretext + payload.attachments[0].fields[0].value);
+                } else {
+                    request(options, function (error, response, body) {
+                      if (error) throw new Error(error);
+                    });
+                    mainResponse.end();
+                }
             });
 
         }
