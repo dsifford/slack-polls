@@ -46,5 +46,7 @@ An Express.js app for native polling on Slack
 - Once this app is running on Heroku, you may use it in as many different teams as you'd like.
 - Only one active poll may be active (per channel) at any given time.
 
+## Todo
+- Enable support for up to 26 poll options (A-Z).
 
 <p align="center"><code>***This app is not affiliated with, or endorsed by, Slack***</code></p>
