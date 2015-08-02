@@ -378,6 +378,10 @@ app.post('/', function(req, res, next) {
                       '*/poll `results`*\n' +
                       '```\n' +
                       '@@@ This method takes no arguments. Invoking it will return a graph and detailed breakdown of the current results.\n' +
+                      '```\n' +
+                      '*/poll `peek`*\n' +
+                      '```\n' +
+                      '@@@ This method takes no arguments. This is similar to /poll {results}, but the results are only displayed to you and not published to the channel.\n' +
                       '```';
 
     // Handler function for /poll {results}
@@ -475,6 +479,7 @@ app.post('/', function(req, res, next) {
 
                 options.body = payload;
 
+                /** If the type of request is 'peek', send the peek response back to the user, else send a webhook containing the results */
                 if (isPeek) {
                     mainResponse.send(payload.text + payload.attachments[0].pretext + payload.attachments[0].fields[0].value);
                 } else {
